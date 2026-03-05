@@ -22,10 +22,10 @@ CORS(app)
 
 # Mail Configuration
 app.config['MAIL_SERVER'] = 'smtp-relay.brevo.com'
-app.config['MAIL_PORT'] = 465                      # Change this from 587 to 465
-app.config['MAIL_USE_TLS'] = False                 # Change this from True to False
-app.config['MAIL_USE_SSL'] = True                  # Add this brand new line!
-app.config['MAIL_USERNAME'] = 'a3e53d001@smtp-brevo.com' 
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USE_SSL'] = False
+app.config['MAIL_USERNAME'] = 'a3e53d001@smtp-brevo.com'
 app.config['MAIL_PASSWORD'] = 'z2EjvOW8M5xD09Vm'
 app.config['MAIL_DEFAULT_SENDER'] = 'mohitog07@gmail.com'
 
@@ -170,7 +170,7 @@ def forgot_password():
         {"$set": {"reset_token": token, "reset_expiry": expiry}}
     )
 
-    reset_link = f"http://localhost:3000/reset-password/{token}"
+    reset_link = f"https://smartreadsml.onrender.com/reset-password/{token}"
     try:
         msg = Message(
             subject="SmartReadsML - Password Reset",
@@ -180,8 +180,8 @@ def forgot_password():
         mail.send(msg)
         return jsonify({"message": "Reset email sent!"}), 200
     except Exception as e:
-        print("Mail error:", e)
-        return jsonify({"message": "Failed to send email"}), 500
+        print("Mail error:", str(e))  # str(e) gives more detail than just e
+        return jsonify({"message": f"Failed to send email: {str(e)}"}), 500
 
 
 @app.route('/reset-password', methods=['POST'])
