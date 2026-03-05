@@ -22,9 +22,10 @@ CORS(app)
 
 # Mail Configuration
 app.config['MAIL_SERVER'] = 'smtp-relay.brevo.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = 'a3e53d001@smtp-brevo.com'
+app.config['MAIL_PORT'] = 465                      # Change this from 587 to 465
+app.config['MAIL_USE_TLS'] = False                 # Change this from True to False
+app.config['MAIL_USE_SSL'] = True                  # Add this brand new line!
+app.config['MAIL_USERNAME'] = 'a3e53d001@smtp-brevo.com' 
 app.config['MAIL_PASSWORD'] = 'z2EjvOW8M5xD09Vm'
 app.config['MAIL_DEFAULT_SENDER'] = 'mohitog07@gmail.com'
 
