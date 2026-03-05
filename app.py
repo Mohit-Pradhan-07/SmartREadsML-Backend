@@ -170,7 +170,7 @@ def forgot_password():
         {"$set": {"reset_token": token, "reset_expiry": expiry}}
     )
 
-    reset_link = f"https://smartreadsml.onrender.com/reset-password/{token}"
+    reset_link = f"https://smartreadsml-frontend-a9i1.vercel.app/reset-password/{token}"
     try:
         msg = Message(
             subject="SmartReadsML - Password Reset",
