@@ -1,6 +1,6 @@
 import secrets
 from datetime import datetime, timedelta
-from flask_mail import Mail, Message
+import requests
 import re
 from pymongo import MongoClient
 from flask_bcrypt import Bcrypt
@@ -9,6 +9,7 @@ from flask import Flask, request, jsonify
 import pickle
 import numpy as np
 import pandas
+import os
 
 path = '.'  # for local host
 
@@ -20,21 +21,31 @@ app = Flask(__name__)
 bcrypt = Bcrypt(app)
 CORS(app)
 
-# Mail Configuration
-app.config['MAIL_SERVER'] = 'smtp-relay.brevo.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USE_SSL'] = False
-app.config['MAIL_USERNAME'] = 'a3e53d001@smtp-brevo.com'
-app.config['MAIL_PASSWORD'] = 'z2EjvOW8M5xD09Vm'
-app.config['MAIL_DEFAULT_SENDER'] = 'mohitog07@gmail.com'
-
-mail = Mail(app)
+# Brevo API Key (HTTP API - works on Render free tier)
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY")  # <-- paste your key here
 
 # MongoDB Connection
 client = MongoClient("mongodb+srv://Admin:reads123@smartreadsml.nykdwew.mongodb.net/smartreads?appName=SmartReadsML")
 db = client["smartreads"]
 users_collection = db["users"]
+
+
+def send_reset_email(to_email, reset_link):
+    response = requests.post(
+        "https://api.brevo.com/v3/smtp/email",
+        headers={
+            "api-key": BREVO_API_KEY,
+            "Content-Type": "application/json"
+        },
+        json={
+            "sender": {"name": "SmartReadsML", "email": "mohitog07@gmail.com"},
+            "to": [{"email": to_email}],
+            "subject": "SmartReadsML - Password Reset",
+            "textContent": f"Click to reset your password (valid 1 hour):\n{reset_link}"
+        }
+    )
+    print("Brevo API response:", response.status_code, response.text)
+    return response.status_code == 201
 
 
 @app.route('/')
@@ -171,17 +182,11 @@ def forgot_password():
     )
 
     reset_link = f"https://smartreadsml-frontend-a9i1.vercel.app/reset-password/{token}"
-    try:
-        msg = Message(
-            subject="SmartReadsML - Password Reset",
-            recipients=[email],
-            body=f"Click to reset your password (valid 1 hour):\n{reset_link}"
-        )
-        mail.send(msg)
+
+    if send_reset_email(email, reset_link):
         return jsonify({"message": "Reset email sent!"}), 200
-    except Exception as e:
-        print("Mail error:", str(e))  # str(e) gives more detail than just e
-        return jsonify({"message": f"Failed to send email: {str(e)}"}), 500
+    else:
+        return jsonify({"message": "Failed to send email"}), 500
 
 
 @app.route('/reset-password', methods=['POST'])
@@ -256,8 +261,6 @@ def get_rating():
 
 
 # ALWAYS LAST
-import os
-
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
