@@ -1,10 +1,10 @@
-Flask
-Flask-Cors
-Flask-Bcrypt
-Flask-Mail
+flask
+flask-cors
+flask-bcrypt
+flask-mail
+pymongo
 numpy
 pandas
-pymongo[srv]
 scikit-learn
 gunicorn
-setuptools
+requests
