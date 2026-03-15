@@ -181,7 +181,7 @@ def forgot_password():
         {"$set": {"reset_token": token, "reset_expiry": expiry}}
     )
 
-    reset_link = f"https://smartreadsml-frontend-a9i1.vercel.app/reset-password/{token}"
+    reset_link = f"https://https://smartreads-app.vercel.app//reset-password/{token}"
 
     if send_reset_email(email, reset_link):
         return jsonify({"message": "Reset email sent!"}), 200
