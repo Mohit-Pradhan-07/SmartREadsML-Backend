@@ -21,13 +21,29 @@ app = Flask(__name__)
 bcrypt = Bcrypt(app)
 CORS(app)
 
-# Brevo API Key (HTTP API - works on Render free tier)
-BREVO_API_KEY = os.environ.get("BREVO_API_KEY")  # <-- paste your key here
+# ✅ Use environment variables for sensitive credentials
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://Admin:reads123@smartreadsml.nykdwew.mongodb.net/smartreads?appName=SmartReadsML")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://smartreads-app.vercel.app")
 
 # MongoDB Connection
-client = MongoClient("mongodb+srv://Admin:reads123@smartreadsml.nykdwew.mongodb.net/smartreads?appName=SmartReadsML")
+client = MongoClient(MONGO_URI)
 db = client["smartreads"]
 users_collection = db["users"]
+activity_collection = db["activity"]  # ✅ New: track user activity
+
+
+# ✅ Helper: log user activity
+def log_activity(email, action, ip=None):
+    try:
+        activity_collection.insert_one({
+            "email": email,
+            "action": action,
+            "timestamp": datetime.utcnow(),
+            "ipAddress": ip or request.remote_addr
+        })
+    except Exception as e:
+        print(f"Activity log error: {e}")
 
 
 def send_reset_email(to_email, reset_link):
@@ -124,6 +140,7 @@ def signup():
     data = request.json
     email = data.get("email")
     password = data.get("password")
+    name = data.get("name", "")  # ✅ Accept optional name field
 
     email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
 
@@ -139,11 +156,20 @@ def signup():
         return jsonify({"message": "User already exists"}), 400
 
     hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+
+    # ✅ Store full user profile with tracking fields
     users_collection.insert_one({
         "email": email,
-        "password": hashed_password
+        "password": hashed_password,
+        "name": name,
+        "createdAt": datetime.utcnow(),
+        "lastLogin": None,
+        "loginCount": 0,
+        "ipAddress": request.remote_addr,
+        "isActive": True
     })
 
+    log_activity(email, "signup")
     return jsonify({"message": "User created successfully"}), 201
 
 
@@ -156,8 +182,21 @@ def login():
     user = users_collection.find_one({"email": email})
 
     if user and bcrypt.check_password_hash(user["password"], password):
+        # ✅ Update tracking fields on every login
+        users_collection.update_one(
+            {"email": email},
+            {
+                "$set": {
+                    "lastLogin": datetime.utcnow(),
+                    "ipAddress": request.remote_addr
+                },
+                "$inc": {"loginCount": 1}
+            }
+        )
+        log_activity(email, "login")
         return jsonify({"message": "Login successful"}), 200
 
+    log_activity(email, "failed_login")
     return jsonify({"message": "Invalid credentials"}), 401
 
 
@@ -181,7 +220,10 @@ def forgot_password():
         {"$set": {"reset_token": token, "reset_expiry": expiry}}
     )
 
-    reset_link = f"https://https://smartreads-app.vercel.app//reset-password/{token}"
+    # ✅ FIXED: removed duplicate https:// and double slash
+    reset_link = f"{FRONTEND_URL}/reset-password/{token}"
+
+    log_activity(email, "forgot_password")
 
     if send_reset_email(email, reset_link):
         return jsonify({"message": "Reset email sent!"}), 200
@@ -207,7 +249,51 @@ def reset_password():
         {"reset_token": token},
         {"$set": {"password": hashed}, "$unset": {"reset_token": "", "reset_expiry": ""}}
     )
+
+    log_activity(user["email"], "password_reset")
     return jsonify({"message": "Password reset successful"}), 200
+
+
+# ---------------- ADMIN SECTION ---------------- #
+
+@app.route('/admin/users', methods=['GET'])
+def get_all_users():
+    # ✅ Basic protection — add a secret key check
+    secret = request.headers.get("X-Admin-Key")
+    if secret != os.environ.get("ADMIN_SECRET_KEY", "changeme"):
+        return jsonify({"message": "Unauthorized"}), 401
+
+    users = list(users_collection.find({}, {
+        "_id": 0,
+        "password": 0,          # Never expose passwords
+        "reset_token": 0,
+        "reset_expiry": 0
+    }))
+
+    # Convert datetime to string for JSON
+    for user in users:
+        if user.get("createdAt"):
+            user["createdAt"] = user["createdAt"].strftime("%Y-%m-%d %H:%M:%S")
+        if user.get("lastLogin"):
+            user["lastLogin"] = user["lastLogin"].strftime("%Y-%m-%d %H:%M:%S")
+
+    return jsonify({"totalUsers": len(users), "users": users}), 200
+
+
+@app.route('/admin/activity', methods=['GET'])
+def get_activity():
+    # ✅ Basic protection
+    secret = request.headers.get("X-Admin-Key")
+    if secret != os.environ.get("ADMIN_SECRET_KEY", "changeme"):
+        return jsonify({"message": "Unauthorized"}), 401
+
+    logs = list(activity_collection.find({}, {"_id": 0}).sort("timestamp", -1).limit(100))
+
+    for log in logs:
+        if log.get("timestamp"):
+            log["timestamp"] = log["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
+
+    return jsonify({"logs": logs}), 200
 
 
 # ---------------- RATINGS SECTION ---------------- #
@@ -232,6 +318,7 @@ def rate_book():
             {'email': email, 'book_title': book_title},
             {'$set': {'rating': int(rating)}}
         )
+        log_activity(email, f"rated_book:{book_title}:{rating}")
         return jsonify({'message': 'Rating updated', 'updated': True}), 200
     else:
         db['ratings'].insert_one({
@@ -239,6 +326,7 @@ def rate_book():
             'book_title': book_title,
             'rating':     int(rating)
         })
+        log_activity(email, f"rated_book:{book_title}:{rating}")
         return jsonify({'message': 'Rating saved', 'updated': False}), 201
 
 
